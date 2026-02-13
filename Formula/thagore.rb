@@ -1,4 +1,4 @@
-﻿class Thagore < Formula
+class Thagore < Formula
   desc "Thagore self-hosted compiler"
   homepage "https://github.com/thagore-foundation/thagore"
   url "https://github.com/thagore-foundation/thagore/releases/download/v0.3.13-foundation/thag-linux.tar.gz"
