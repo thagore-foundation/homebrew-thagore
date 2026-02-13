@@ -1,0 +1,87 @@
+name: Update Thagore Formula
+
+on:
+  repository_dispatch:
+    types: [thagore-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag (vd: v0.4.0)"
+        required: true
+      download_url:
+        description: "URL asset thag-linux.tar.gz"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Resolve release info
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            TAG="${{ github.event.client_payload.version }}"
+            URL="${{ github.event.client_payload.download_url }}"
+          else
+            TAG="${{ inputs.version }}"
+            URL="${{ inputs.download_url }}"
+          fi
+
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Compute SHA256
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "${{ steps.release.outputs.url }}" -o thag-linux.tar.gz
+          SHA="$(sha256sum thag-linux.tar.gz | awk '{print $1}')"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Update Formula
+        shell: bash
+        run: |
+          cat > Formula/thagore.rb <<'RUBY'
+          class Thagore < Formula
+            desc "Thagore self-hosted compiler"
+            homepage "https://github.com/thagore-foundation/thagore"
+            url "${{ steps.release.outputs.url }}"
+            sha256 "${{ steps.sha.outputs.sha }}"
+            license "MIT"
+            version "${{ steps.release.outputs.version }}"
+
+            def install
+              bin.install "dist/bin/thag"
+              libexec.install "dist/lib/std"
+            end
+
+            test do
+              assert_match "Thagore", shell_output("#{bin}/thag --help 2>&1", 0)
+            end
+          end
+          RUBY
+
+      - name: Commit & push by github-actions[bot]
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No formula changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/thagore.rb
+          git commit -m "Update thagore to ${{ steps.release.outputs.version }}"
+          git push
